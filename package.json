@@ -56,5 +56,19 @@
     "@types/node": "^22.7.4",
     "rimraf": "^6.0.1",
     "typescript": "^5.6.2"
+  },
+  "lambda_ai": {
+    "last_runs": {
+      "harden": {
+        "ran_at_utc": "2026-05-05T18:48:24.259Z",
+        "ran_at_athens": "05/05/2026 21:48:24",
+        "git_commit": "c6ec012624960b0739dcfe6fabf0a535502fa199",
+        "git_commit_short": "c6ec012",
+        "git_commit_time": "2026-05-05T21:34:54+03:00",
+        "git_branch": "chore/harden-label-printer-cloud-customer-pairing-20260505",
+        "prompts_version": "0.8.31",
+        "repo_version": "1.0.0"
+      }
+    }
   }
 }

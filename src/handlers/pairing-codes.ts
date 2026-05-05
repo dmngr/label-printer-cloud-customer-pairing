@@ -9,6 +9,19 @@
  * Ported verbatim from `Handlers/CreatePairingCodeFunction.cs`.
  */
 
+// Module-level idempotent BigInt.prototype.toJSON shim — mandatory per
+// dmngr/lambda-policies harden phase. DynamoDB N attributes can come back as
+// BigInt via unmarshall(...) and would otherwise crash JSON.stringify(...).
+if (typeof BigInt === "function" && !BigInt.prototype.toJSON) {
+  Object.defineProperty(BigInt.prototype, "toJSON", {
+    value: function () {
+      return this.toString();
+    },
+    configurable: true,
+    writable: true,
+  });
+}
+
 import type { APIGatewayProxyHandlerV2, LambdaFunctionURLEvent } from "aws-lambda";
 
 import { loadOptions } from "../config";
