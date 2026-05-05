@@ -1,0 +1,83 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DM Label Printer customer-pairing Lambda (Function URL). Two handlers in one bundle: pairing-codes (device-side) and pairing-claim (web-side).",
+
+  "Parameters": {
+    "LambdaFunctionName": {
+      "Description": "Name of the Lambda function being deployed (lambda-upload sets this per function).",
+      "Type": "String"
+    },
+    "S3Bucket": {
+      "Description": "Bucket used with CloudFormation to update function code.",
+      "Type": "String"
+    },
+    "S3Key": {
+      "Description": "Key to s3 object used with CloudFormation to update function code.",
+      "Type": "String"
+    },
+    "Role": {
+      "Description": "Execution role for the Lambda function.",
+      "Type": "String"
+    },
+    "HandlerEntrypoint": {
+      "Description": "Compiled handler entrypoint, e.g. `dist/handlers/pairing-codes.handler` or `dist/handlers/pairing-claim.handler`.",
+      "Type": "String",
+      "Default": "dist/handlers/pairing-codes.handler"
+    },
+    "CloudBearerToken": {
+      "Description": "Bearer token accepted by the device-side Function URL (codes endpoint). Empty string disables bearer auth.",
+      "Type": "String",
+      "NoEcho": true,
+      "Default": ""
+    },
+    "DevicesTableName": {
+      "Description": "Name of the existing DMLabelPrinterCloudDevices DynamoDB table (PK DeviceCode, eu-west-1).",
+      "Type": "String",
+      "Default": "DMLabelPrinterCloudDevices"
+    },
+    "PairingCodesTableName": {
+      "Description": "Name of the existing DMLabelPrinterCloudPairingCodes DynamoDB table (PK Code, TTL on ExpiresAtUtc, eu-west-1).",
+      "Type": "String",
+      "Default": "DMLabelPrinterCloudPairingCodes"
+    },
+    "CustomerTokensTableName": {
+      "Description": "Name of the existing DMLabelPrinterCloudCustomerTokens DynamoDB table (PK TokenHash, eu-west-1).",
+      "Type": "String",
+      "Default": "DMLabelPrinterCloudCustomerTokens"
+    }
+  },
+
+  "Resources": {
+    "Lambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": { "Ref": "S3Bucket" },
+          "S3Key": { "Ref": "S3Key" }
+        },
+        "FunctionName": { "Ref": "LambdaFunctionName" },
+        "Handler": { "Ref": "HandlerEntrypoint" },
+        "Role": { "Ref": "Role" },
+        "Runtime": "nodejs24.x",
+        "Architectures": ["arm64"],
+        "Timeout": 30,
+        "MemorySize": 512,
+        "Environment": {
+          "Variables": {
+            "DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN": { "Ref": "CloudBearerToken" },
+            "DM_LABEL_PRINTER_CLOUD_DEVICES_TABLE": { "Ref": "DevicesTableName" },
+            "DM_LABEL_PRINTER_CLOUD_PAIRING_CODES_TABLE": { "Ref": "PairingCodesTableName" },
+            "DM_LABEL_PRINTER_CLOUD_CUSTOMER_TOKENS_TABLE": { "Ref": "CustomerTokensTableName" }
+          }
+        }
+      }
+    }
+  },
+
+  "Outputs": {
+    "Lambda": {
+      "Value": { "Ref": "Lambda" },
+      "Description": "Name of the newly created Lambda function"
+    }
+  }
+}

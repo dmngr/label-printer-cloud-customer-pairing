@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "defaults": {
+    "emit_requestid_success": false
+  },
+  "errors": {
+    "customer_pairing_code_expired": {
+      "emit_requestid_success": false,
+      "notes": "Pairing code TTL has elapsed; client must request a fresh code (HTTP 410)."
+    },
+    "customer_pairing_code_not_found": {
+      "emit_requestid_success": false,
+      "notes": "Pairing code unknown (already claimed or never minted) (HTTP 404)."
+    },
+    "customer_pairing_code_missing_store": {
+      "emit_requestid_success": false,
+      "notes": "Pairing code row exists but has no StoreId; defensive guard (HTTP 409)."
+    },
+    "customer_pairing_device_not_found": {
+      "emit_requestid_success": false,
+      "notes": "DeviceCode unknown in Devices table (HTTP 404)."
+    },
+    "customer_pairing_no_store_assignment": {
+      "emit_requestid_success": false,
+      "notes": "Device exists but Group attribute is empty/missing (HTTP 409)."
+    },
+    "customer_pairing_code_collision": {
+      "emit_requestid_success": false,
+      "notes": "Failed to allocate a non-colliding pairing code after retries (HTTP 503)."
+    },
+    "customer_pairing_invalid_json_body": {
+      "emit_requestid_success": false,
+      "notes": "Request body was not parseable JSON (HTTP 400)."
+    },
+    "customer_pairing_invalid_params": {
+      "emit_requestid_success": false,
+      "notes": "Required field missing (deviceCode / code) (HTTP 400)."
+    },
+    "customer_pairing_unauthorized": {
+      "emit_requestid_success": false,
+      "notes": "Cloud bearer token missing/invalid on device-side endpoint (HTTP 401)."
+    }
+  }
+}
