@@ -113,7 +113,14 @@ export class DynamoCustomerPairingStore {
       new GetItemCommand({
         TableName: this.options.devicesTableName,
         Key: { DeviceCode: s(deviceCode) },
-        ProjectionExpression: "#g",
+        // Project the key too: with ProjectionExpression="#g" alone, DynamoDB
+        // returns Item={} when the device exists but has no Group attribute,
+        // which is indistinguishable from a missing device and would cause
+        // the handler to 404 a real device that just hasn't been assigned a
+        // Group yet. Including the key gives us a non-empty Item for existing
+        // devices regardless of Group, so we can correctly map missing-Group
+        // to the 409 "no store assignment" path.
+        ProjectionExpression: "DeviceCode, #g",
         ExpressionAttributeNames: { "#g": "Group" }
       })
     );
