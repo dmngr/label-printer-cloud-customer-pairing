@@ -39,6 +39,10 @@
     "customer_pairing_unauthorized": {
       "emit_requestid_success": false,
       "notes": "Cloud bearer token missing/invalid on device-side endpoint (HTTP 401)."
+    },
+    "customer_pairing_authorization_configuration_error": {
+      "emit_requestid_success": false,
+      "notes": "The shared bearer SecureString could not be loaded from SSM (HTTP 500)."
     }
   }
 }

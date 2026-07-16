@@ -1,114 +1,87 @@
 # label-printer-cloud-customer-pairing
 
-Customer-pairing Lambda for the DM Label Printer customer-facing web app at
-[app.label.ninja](https://app.label.ninja). Two handlers are shipped in this
-single bundle, each fronted by its own Lambda Function URL (no API Gateway):
+Customer-pairing Lambdas for the DM Label Printer customer web app at
+[app.label.ninja](https://app.label.ninja). One reviewed Node.js 24 TypeScript
+bundle supplies two Lambda Function URL handlers:
 
-| Endpoint | Method | Side | Auth |
-|---|---|---|---|
-| `/api/v1/pairing/codes` | POST | device-side | Bearer `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN` |
-| `/api/v1/pairing/claim` | POST | web-side | optional bearer (used to merge stores into an existing customer token) |
+| Endpoint                | Method | Side   | Authentication                                |
+| ----------------------- | ------ | ------ | --------------------------------------------- |
+| `/api/v1/pairing/codes` | POST   | device | Shared bearer loaded from DM AWS SSM          |
+| `/api/v1/pairing/claim` | POST   | web    | Optional customer bearer used to merge stores |
 
-This is a Node.js (TypeScript) port of the original .NET prototype that lived
-in [`dmngr/label-printers-panel`](https://github.com/dmngr/label-printers-panel)
-under `src/LabelPrinter.CloudLambda.CustomerPairing/`. The .NET version is
-being retired in favor of this dedicated repo, in line with the team pattern
-of one Lambda repo per Lambda function bundle. See the design doc:
-<https://github.com/dmngr/label-printers-panel/blob/main/docs/app-label-ninja-design.md>.
+Both live functions run in DM account `787324535455`, region `eu-west-1`, on
+`nodejs24.x` and `arm64`. No .NET runtime or .NET deployment artifact is used.
 
 ## Layout
 
-- `src/handlers/pairing-codes.ts` — device-side handler entry, `export const handler`
-- `src/handlers/pairing-claim.ts` — web-side handler entry, `export const handler`
-- `src/storage/dynamo-store.ts` — DynamoDB store (low-level `@aws-sdk/client-dynamodb`)
-- `src/lib/pairing-code-generator.ts` — `XXXX-XXXX` code generator (Crockford-style alphabet)
-- `src/lib/customer-token.ts` — bearer mint (32-byte base64url) + sha256 hex hash
-- `src/lib/bearer-authorizer.ts` — header-based bearer matcher
-- `src/lib/http-results.ts` — Function URL response helpers (CORS, JSON, validation problem)
-- `src/lib/handled-errors.ts` — handled-errors `ACTION:SLACK_HANDLED_ERROR_HE1=` marker
-- `src/types.ts` — wire model interfaces (mirror `Models/CustomerPairingModels.cs`)
-- `src/config.ts` — env-var-driven options (table names, bearer, TTL)
-- `cloudformation/stack.json` — CloudFormation template (`nodejs24.x`, `arm64`)
-- `custom_errors.policy.json` — handled-errors policy (defaults `emit_requestid_success: false`)
+- `src/handlers/pairing-codes.ts`: device-side handler.
+- `src/handlers/pairing-claim.ts`: web-side handler.
+- `src/storage/dynamo-store.ts`: DynamoDB persistence.
+- `src/lib/bearer-authorizer.ts`: SSM-backed shared bearer authorization.
+- `src/lib/customer-token.ts`: customer bearer generation and hashing.
+- `infra/customer-pairing-ssm-policy.json`: least-privilege SSM permission.
+- `scripts/deploy-prod.mjs`: account-gated dual-function deployment.
+- `cloudformation/stack.json`: Node.js 24 ARM64 infrastructure contract.
 
-## Tables (already exist in `eu-west-1`, do NOT recreate)
+## DynamoDB
 
-- `DMLabelPrinterCloudDevices` — PK `DeviceCode` (S). Read-only here. We
-  project the reserved-word attribute `Group` via `ProjectionExpression "#g"` +
-  `ExpressionAttributeNames {"#g": "Group"}`.
-- `DMLabelPrinterCloudPairingCodes` — PK `Code` (S). Other: `DeviceCode` (S),
-  `StoreId` (S), `ExpiresAtUtc` (N, epoch seconds, TTL).
-- `DMLabelPrinterCloudCustomerTokens` — PK `TokenHash` (S). Other: `StoreIds`
-  (SS), `CreatedAtUtc` (S), `LastUsedAtUtc` (S).
+The following existing `eu-west-1` tables are used and must not be recreated:
 
-## Environment variables
+- `DMLabelPrinterCloudDevices`, partition key `DeviceCode` (S).
+- `DMLabelPrinterCloudPairingCodes`, partition key `Code` (S), TTL
+  `ExpiresAtUtc` (N).
+- `DMLabelPrinterCloudCustomerTokens`, partition key `TokenHash` (S).
 
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN` | only on the codes Lambda | `""` (auth disabled) | Cloud bearer accepted by the device-side endpoint. Empty disables auth. |
-| `DM_LABEL_PRINTER_CLOUD_DEVICES_TABLE` | no | `DMLabelPrinterCloudDevices` | Devices table name. |
-| `DM_LABEL_PRINTER_CLOUD_PAIRING_CODES_TABLE` | no | `DMLabelPrinterCloudPairingCodes` | Pairing-codes table name. |
-| `DM_LABEL_PRINTER_CLOUD_CUSTOMER_TOKENS_TABLE` | no | `DMLabelPrinterCloudCustomerTokens` | Customer-tokens table name. |
+All Label Printer tables use DynamoDB on-demand billing (`PAY_PER_REQUEST`).
+The pairing-code TTL is fixed at 900 seconds to preserve the API contract.
 
-The pairing-code TTL is fixed at 900 s (= 15 min) to match the .NET prototype.
+## Configuration
 
-## Build & test
+| Variable                                            | Default                                       | Notes                                                                                   |
+| --------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER` | `/dm/label-printer/cloud/shared-bearer-token` | SecureString parameter name; the token is never stored in Lambda environment variables. |
+| `DM_LABEL_PRINTER_CLOUD_DEVICES_TABLE`              | `DMLabelPrinterCloudDevices`                  | Devices table.                                                                          |
+| `DM_LABEL_PRINTER_CLOUD_PAIRING_CODES_TABLE`        | `DMLabelPrinterCloudPairingCodes`             | Pairing-code table.                                                                     |
+| `DM_LABEL_PRINTER_CLOUD_CUSTOMER_TOKENS_TABLE`      | `DMLabelPrinterCloudCustomerTokens`           | Customer-token table.                                                                   |
 
-```
+## Build And Test
+
+```powershell
 npm ci
-npm run build
+npm run lint:check
+npm run format:check
+npm run typecheck
 npm test
+npm run deploy:prod:check
 ```
 
-The build emits `dist/`. The smoke tests assert the handlers can be imported,
-pairing codes have the expected shape, the bearer mint has the expected
-length/charset, and `redactDeep` redacts sensitive headers without dropping
-the event schema.
+## Hardened Deploy
 
-## Deploy
+Deployments must run through the `crp-repos-harden-deploy` workflow. The repo
+contains two handlers, so `npm run deploy:prod` deliberately performs a
+dual-function deployment instead of deriving one Lambda name from
+`package.json.name`.
 
-This repo follows the team's `crp-repos-harden-deploy` skill / `lambda-upload`
-canonical scripts:
+The deployment process:
 
-- `npm run deploy:prod` — code-only deploy (default). Builds TS, then runs
-  `lambda-upload deploy-prod dm`.
-- `npm run deploy:prod:check` — local validation, no AWS calls; assumes
-  `nodejs24.x` for the AWS SDK dependency policy check.
-- `npm run deploy:prod:upgrade` — runtime + arch upgrade path. Builds TS, then
-  runs `lambda-upload deploy-prod dm --upgrade-config` (runtime first, then
-  code, then arch flips to `arm64`).
+1. Builds and packages one reviewed bundle without changing its committed version.
+2. Refuses any AWS account other than `787324535455` or region other than `eu-west-1`.
+3. Verifies that the shared bearer parameter exists as a SecureString.
+4. Grants only `ssm:GetParameter` for that parameter to the live execution role.
+5. Uploads the same ZIP to `label-printer-cloud-customer-pairing-claim` and
+   `label-printer-cloud-customer-pairing-codes`.
+6. Enforces `nodejs24.x`, `arm64`, and each exact Node handler.
+7. Removes `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN` and sets only the SSM parameter name.
+8. Reads back both configurations and requires an identical `CodeSha256`.
 
-The CloudFormation template (`cloudformation/stack.json`) is parameterized so
-each Function URL Lambda is deployed with its own
-`HandlerEntrypoint` parameter:
+The handlers use these entries:
 
-- codes function: `dist/handlers/pairing-codes.handler`
-- claim function: `dist/handlers/pairing-claim.handler`
+- `dist/handlers/pairing-codes.handler`
+- `dist/handlers/pairing-claim.handler`
 
-Function URL configuration (`AuthType: NONE`, `InvokeMode: BUFFERED`) is
-applied out-of-band via CRP / lambda-upload tooling.
+## Handled Errors
 
-## Handled errors
-
-The handler emits `ACTION:SLACK_HANDLED_ERROR_HE1=<code>|<base64url(json)>` for
-each policy-tracked failure. The repo-local `custom_errors.policy.json`
-declares the codes used here:
-
-- `customer_pairing_unauthorized`
-- `customer_pairing_invalid_json_body`
-- `customer_pairing_invalid_params`
-- `customer_pairing_device_not_found`
-- `customer_pairing_no_store_assignment`
-- `customer_pairing_code_collision`
-- `customer_pairing_code_not_found`
-- `customer_pairing_code_expired`
-- `customer_pairing_code_missing_store`
-
-Defaults to `emit_requestid_success: false` (no legacy Slack suppression). See
-[`dmngr/lambda-policies/handled-errors/handled-error-policy.md`](https://github.com/dmngr/lambda-policies/blob/main/handled-errors/handled-error-policy.md)
-for the contract.
-
-## Next steps (operator)
-
-1. `crp repos harden-pr label-printer-cloud-customer-pairing`
-2. After PR merges and you've reviewed it: `crp repos harden-deploy label-printer-cloud-customer-pairing --aws-profile dm --region eu-west-1`
+`custom_errors.policy.json` covers validation, pairing state, authorization, and
+SSM authorization-configuration failures. Known failures emit the canonical
+`ACTION:SLACK_HANDLED_ERROR_HE1=` marker. Unexpected failures emit
+`RequestId FAILED`; successful requests emit `RequestId SUCCESS`.

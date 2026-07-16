@@ -10,7 +10,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 test("pairing-code-generator emits XXXX-XXXX from the unambiguous alphabet", async () => {
-  const { generatePairingCode } = await import("../lib/pairing-code-generator");
+  const { generatePairingCode } = await import("../lib/pairing-code-generator.js");
   const allowed = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/;
 
   for (let i = 0; i < 100; i++) {
@@ -23,7 +23,7 @@ test("pairing-code-generator emits XXXX-XXXX from the unambiguous alphabet", asy
 });
 
 test("customer-token mints a 32-byte base64url bearer with matching sha256 hash", async () => {
-  const { createBearer, sha256Hex } = await import("../lib/customer-token");
+  const { createBearer, sha256Hex } = await import("../lib/customer-token.js");
 
   const bearer = createBearer();
   // 32 bytes -> 43 chars base64url (no padding).
@@ -57,7 +57,7 @@ test("handler entrypoints compile cleanly to dist/", async () => {
 });
 
 test("redactDeep replaces sensitive header values but keeps the schema", async () => {
-  const { redactDeep } = await import("../lib/handled-errors");
+  const { redactDeep } = await import("../lib/handled-errors.js");
 
   const event = {
     headers: { authorization: "Bearer s3cret", "x-api-key": "k1", accept: "application/json" },
@@ -72,6 +72,53 @@ test("redactDeep replaces sensitive header values but keeps the schema", async (
 });
 
 test("handled-error policy lookup falls back to false for unknown codes", async () => {
-  const { shouldSuppress } = await import("../lib/handled-errors");
+  const { shouldSuppress } = await import("../lib/handled-errors.js");
   assert.equal(shouldSuppress("totally_unknown_code_12345"), false);
+});
+
+test("shared bearer configuration uses only the SSM parameter name", async () => {
+  const previousParameter = process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER;
+  const previousStaticToken = process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN;
+  delete process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER;
+  process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN = "must-not-be-read";
+  try {
+    const { loadOptions } = await import("../config.js");
+    const options = loadOptions();
+    assert.equal(
+      options.bearerTokenSsmParameterName,
+      "/dm/label-printer/cloud/shared-bearer-token"
+    );
+    assert.equal("bearerToken" in options, false);
+  } finally {
+    if (previousParameter === undefined) {
+      delete process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER;
+    } else {
+      process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER = previousParameter;
+    }
+    if (previousStaticToken === undefined) {
+      delete process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN;
+    } else {
+      process.env.DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN = previousStaticToken;
+    }
+  }
+});
+
+test("shared bearer extraction preserves authorization failure semantics", async () => {
+  const { extractSharedBearer } = await import("../lib/bearer-authorizer.js");
+  assert.equal(extractSharedBearer({ headers: {} } as never), undefined);
+  assert.equal(extractSharedBearer({ headers: { authorization: "Basic abc" } } as never), null);
+  assert.equal(extractSharedBearer({ headers: { Authorization: "Bearer " } } as never), "");
+  assert.equal(
+    extractSharedBearer({ headers: { AUTHORIZATION: "bearer expected" } } as never),
+    "expected"
+  );
+});
+
+test("handled-error policy includes SSM authorization configuration failures", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const policy = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "..", "..", "custom_errors.policy.json"), "utf8")
+  ) as { errors?: Record<string, unknown> };
+  assert.ok(policy.errors?.customer_pairing_authorization_configuration_error);
 });

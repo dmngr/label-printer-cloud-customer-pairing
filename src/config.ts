@@ -10,14 +10,14 @@ export interface CustomerPairingOptions {
   pairingCodesTableName: string;
   customerTokensTableName: string;
   pairingCodeTtlSeconds: number;
-  bearerToken: string;
-  isAuthEnabled: boolean;
+  bearerTokenSsmParameterName: string;
 }
 
 const DEFAULT_DEVICES_TABLE = "DMLabelPrinterCloudDevices";
 const DEFAULT_PAIRING_CODES_TABLE = "DMLabelPrinterCloudPairingCodes";
 const DEFAULT_CUSTOMER_TOKENS_TABLE = "DMLabelPrinterCloudCustomerTokens";
 const DEFAULT_PAIRING_CODE_TTL_SECONDS = 900;
+const DEFAULT_BEARER_TOKEN_SSM_PARAMETER = "/dm/label-printer/cloud/shared-bearer-token";
 
 function readValue(key: string, fallback: string): string {
   const raw = process.env[key];
@@ -27,7 +27,6 @@ function readValue(key: string, fallback: string): string {
 }
 
 export function loadOptions(): CustomerPairingOptions {
-  const bearerToken = readValue("DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN", "");
   return {
     devicesTableName: readValue("DM_LABEL_PRINTER_CLOUD_DEVICES_TABLE", DEFAULT_DEVICES_TABLE),
     pairingCodesTableName: readValue(
@@ -39,7 +38,9 @@ export function loadOptions(): CustomerPairingOptions {
       DEFAULT_CUSTOMER_TOKENS_TABLE
     ),
     pairingCodeTtlSeconds: DEFAULT_PAIRING_CODE_TTL_SECONDS,
-    bearerToken,
-    isAuthEnabled: bearerToken.length > 0
+    bearerTokenSsmParameterName: readValue(
+      "DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER",
+      DEFAULT_BEARER_TOKEN_SSM_PARAMETER
+    )
   };
 }

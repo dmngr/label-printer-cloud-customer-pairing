@@ -80,7 +80,8 @@ interface DynamoSdkModule {
   UpdateItemCommand: DynamoCommandCtor<UpdateItemInput, UpdateItemOutput>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// AWS SDK v3 is supplied by the managed Node.js Lambda runtime.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const sdk: DynamoSdkModule = require("@aws-sdk/client-dynamodb") as DynamoSdkModule;
 const { DynamoDBClient, GetItemCommand, PutItemCommand, DeleteItemCommand, UpdateItemCommand } = sdk;
 

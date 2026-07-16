@@ -1,20 +1,26 @@
 {
   "name": "label-printer-cloud-customer-pairing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Customer pairing Lambda for the DM Label Printer customer-facing web app at app.label.ninja - exposes /api/v1/pairing/codes (device-side) and /api/v1/pairing/claim (web-side) over Function URLs.",
   "main": "dist/handlers/pairing-codes.js",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "lint:check": "type_check_lambdas_v3 lint:check",
+    "lint:fix": "type_check_lambdas_v3 lint:fix",
+    "format:check": "type_check_lambdas_v3 format:check",
+    "format:fix": "type_check_lambdas_v3 format:fix",
+    "typecheck": "type_check_lambdas_v3 typecheck",
+    "test": "npm run build && node --test dist/test/smoke.test.js",
+    "deploy:prod": "npm run package:prod && node scripts/deploy-prod.mjs",
+    "deploy:prod:check": "npm run package:prod && node scripts/deploy-prod.mjs --check",
+    "deploy:prod:upgrade": "npm run deploy:prod",
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "rebuild": "npm run clean && npm run build",
-    "test": "npm run build && node --test dist/test/smoke.test.js",
     "prepackage": "npm run rebuild",
-    "deploy:prod": "npm run rebuild && lambda-upload deploy-prod dm",
-    "deploy:prod:check": "lambda-upload deploy-prod dm --check --force --assume-runtime nodejs24.x",
-    "deploy:prod:upgrade": "npm run rebuild && lambda-upload deploy-prod dm --upgrade-config"
+    "package:prod": "npm run rebuild && lambda-upload deploy-prod dm --package-only --skip-bump --force --assume-runtime nodejs24.x"
   },
   "repository": {
     "type": "git",
@@ -55,20 +61,22 @@
     "@types/aws-lambda": "^8.10.140",
     "@types/node": "^22.7.4",
     "rimraf": "^6.0.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "@deliverymanager/type_check_lambdas_v3": "^1.0.11"
   },
   "lambda_ai": {
     "last_runs": {
       "harden": {
-        "ran_at_utc": "2026-05-05T18:48:24.259Z",
-        "ran_at_athens": "05/05/2026 21:48:24",
-        "git_commit": "c6ec012624960b0739dcfe6fabf0a535502fa199",
-        "git_commit_short": "c6ec012",
-        "git_commit_time": "2026-05-05T21:34:54+03:00",
-        "git_branch": "chore/harden-label-printer-cloud-customer-pairing-20260505",
+        "ran_at_utc": "2026-07-16T13:29:00.416Z",
+        "ran_at_athens": "16/07/2026 16:29:00",
+        "git_commit": "c94c855f71361455cae6149ae073aaf2a2f27031",
+        "git_commit_short": "c94c855",
+        "git_commit_time": "2026-07-16T16:29:00+03:00",
+        "git_branch": "codex/ssm-bearer-token-20260716",
         "prompts_version": "0.8.31",
-        "repo_version": "1.0.0"
+        "repo_version": "1.0.1"
       }
     }
-  }
+  },
+  "prettier": "@deliverymanager/type_check_lambdas_v3/prettier.config.mjs"
 }
