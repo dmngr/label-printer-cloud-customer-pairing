@@ -24,11 +24,10 @@
       "Type": "String",
       "Default": "dist/handlers/pairing-codes.handler"
     },
-    "CloudBearerToken": {
-      "Description": "Bearer token accepted by the device-side Function URL (codes endpoint). Empty string disables bearer auth.",
+    "CloudBearerTokenSsmParameterName": {
+      "Description": "SecureString parameter containing the bearer token accepted by the device-side Function URL.",
       "Type": "String",
-      "NoEcho": true,
-      "Default": ""
+      "Default": "/dm/label-printer/cloud/shared-bearer-token"
     },
     "DevicesTableName": {
       "Description": "Name of the existing DMLabelPrinterCloudDevices DynamoDB table (PK DeviceCode, eu-west-1).",
@@ -64,7 +63,7 @@
         "MemorySize": 512,
         "Environment": {
           "Variables": {
-            "DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN": { "Ref": "CloudBearerToken" },
+            "DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN_SSM_PARAMETER": { "Ref": "CloudBearerTokenSsmParameterName" },
             "DM_LABEL_PRINTER_CLOUD_DEVICES_TABLE": { "Ref": "DevicesTableName" },
             "DM_LABEL_PRINTER_CLOUD_PAIRING_CODES_TABLE": { "Ref": "PairingCodesTableName" },
             "DM_LABEL_PRINTER_CLOUD_CUSTOMER_TOKENS_TABLE": { "Ref": "CustomerTokensTableName" }

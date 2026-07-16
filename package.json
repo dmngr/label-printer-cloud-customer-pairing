@@ -1,20 +1,26 @@
 {
   "name": "label-printer-cloud-customer-pairing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Customer pairing Lambda for the DM Label Printer customer-facing web app at app.label.ninja - exposes /api/v1/pairing/codes (device-side) and /api/v1/pairing/claim (web-side) over Function URLs.",
   "main": "dist/handlers/pairing-codes.js",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "lint:check": "type_check_lambdas_v3 lint:check",
+    "lint:fix": "type_check_lambdas_v3 lint:fix",
+    "format:check": "type_check_lambdas_v3 format:check",
+    "format:fix": "type_check_lambdas_v3 format:fix",
+    "typecheck": "type_check_lambdas_v3 typecheck",
+    "test": "npm run build && node --test dist/test/smoke.test.js",
+    "deploy:prod": "npm run package:prod && node scripts/deploy-prod.mjs",
+    "deploy:prod:check": "npm run package:prod && node scripts/deploy-prod.mjs --check",
+    "deploy:prod:upgrade": "npm run deploy:prod",
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "rebuild": "npm run clean && npm run build",
-    "test": "npm run build && node --test dist/test/smoke.test.js",
     "prepackage": "npm run rebuild",
-    "deploy:prod": "npm run rebuild && lambda-upload deploy-prod dm",
-    "deploy:prod:check": "lambda-upload deploy-prod dm --check --force --assume-runtime nodejs24.x",
-    "deploy:prod:upgrade": "npm run rebuild && lambda-upload deploy-prod dm --upgrade-config"
+    "package:prod": "npm run rebuild && lambda-upload deploy-prod dm --package-only --skip-bump --force --assume-runtime nodejs24.x"
   },
   "repository": {
     "type": "git",
@@ -55,7 +61,8 @@
     "@types/aws-lambda": "^8.10.140",
     "@types/node": "^22.7.4",
     "rimraf": "^6.0.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "@deliverymanager/type_check_lambdas_v3": "^1.0.11"
   },
   "lambda_ai": {
     "last_runs": {
@@ -70,5 +77,6 @@
         "repo_version": "1.0.0"
       }
     }
-  }
+  },
+  "prettier": "@deliverymanager/type_check_lambdas_v3/prettier.config.mjs"
 }

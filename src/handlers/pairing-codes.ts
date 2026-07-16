@@ -86,7 +86,21 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       return noContentResponse();
     }
 
-    const authFailure = authorize(fnEvent, options);
+    let authFailure;
+    try {
+      authFailure = await authorize(fnEvent, options.bearerTokenSsmParameterName);
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          log_type: "authorization_configuration_error",
+          awsRequestId,
+          message: error instanceof Error ? error.message : String(error)
+        })
+      );
+      const code = "customer_pairing_authorization_configuration_error";
+      logHandledErrorAction(code, shouldSuppress(code));
+      return textResponse(500, "Authorization configuration error");
+    }
     if (authFailure !== null) {
       const code = "customer_pairing_unauthorized";
       logHandledErrorAction(code, shouldSuppress(code));
