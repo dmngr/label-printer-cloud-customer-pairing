@@ -40,6 +40,7 @@ import {
   redactDeep,
   shouldSuppress
 } from "../lib/handled-errors";
+import { buildInvocationContextAction } from "../lib/invocation-context-action";
 import { DynamoCustomerPairingStore } from "../storage/dynamo-store";
 import type { ClaimPairingCodeRequest, ClaimPairingCodeResponse } from "../types";
 
@@ -75,7 +76,9 @@ function nowIsoSeconds(): string {
 export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
   const fnEvent = event as LambdaFunctionURLEvent;
   const awsRequestId = context?.awsRequestId;
-  console.log("ctx", { handler: "pairingClaim", awsRequestId });
+  const invocationContext = { log_type: "ctx", handler: "pairingClaim", awsRequestId };
+  console.log("ctx", JSON.stringify(invocationContext));
+  console.log(buildInvocationContextAction(invocationContext));
 
   try {
     const options = loadOptions();

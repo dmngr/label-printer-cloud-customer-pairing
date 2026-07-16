@@ -39,6 +39,7 @@ import {
   redactDeep,
   shouldSuppress
 } from "../lib/handled-errors";
+import { buildInvocationContextAction } from "../lib/invocation-context-action";
 import { generatePairingCode } from "../lib/pairing-code-generator";
 import { DynamoCustomerPairingStore } from "../storage/dynamo-store";
 import type { CreatePairingCodeRequest, CreatePairingCodeResponse } from "../types";
@@ -76,7 +77,9 @@ function epochToIso(epochSeconds: number): string {
 export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
   const fnEvent = event as LambdaFunctionURLEvent;
   const awsRequestId = context?.awsRequestId;
-  console.log("ctx", { handler: "pairingCodes", awsRequestId });
+  const invocationContext = { log_type: "ctx", handler: "pairingCodes", awsRequestId };
+  console.log("ctx", JSON.stringify(invocationContext));
+  console.log(buildInvocationContextAction(invocationContext));
 
   try {
     const options = loadOptions();
