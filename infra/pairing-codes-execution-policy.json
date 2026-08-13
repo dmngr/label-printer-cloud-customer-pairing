@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateOwnLogGroup",
+      "Effect": "Allow",
+      "Action": "logs:CreateLogGroup",
+      "Resource": "arn:aws:logs:eu-west-1:787324535455:*"
+    },
+    {
+      "Sid": "WriteOwnLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:eu-west-1:787324535455:log-group:/aws/lambda/label-printer-cloud-customer-pairing-codes:*"
+    },
+    {
+      "Sid": "ReadSharedBearer",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:eu-west-1:787324535455:parameter/dm/label-printer/cloud/shared-bearer-token"
+    },
+    {
+      "Sid": "ReadDeviceAssignment",
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:eu-west-1:787324535455:table/DMLabelPrinterCloudDevices"
+    },
+    {
+      "Sid": "AllocatePairingCodes",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-west-1:787324535455:table/DMLabelPrinterCloudPairingCodes"
+    }
+  ]
+}

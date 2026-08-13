@@ -19,7 +19,10 @@ Both live functions run in DM account `787324535455`, region `eu-west-1`, on
 - `src/storage/dynamo-store.ts`: DynamoDB persistence.
 - `src/lib/bearer-authorizer.ts`: SSM-backed shared bearer authorization.
 - `src/lib/customer-token.ts`: customer bearer generation and hashing.
-- `infra/customer-pairing-ssm-policy.json`: least-privilege SSM permission.
+- `infra/pairing-codes-execution-policy.json`: exact SSM, Devices,
+  PairingCodes, and log permissions.
+- `infra/pairing-claim-execution-policy.json`: exact PairingCodes,
+  CustomerTokens, and log permissions.
 - `scripts/deploy-prod.mjs`: account-gated dual-function deployment.
 - `cloudformation/stack.json`: Node.js 24 ARM64 infrastructure contract.
 
@@ -67,12 +70,18 @@ The deployment process:
 1. Builds and packages one reviewed bundle without changing its committed version.
 2. Refuses any AWS account other than `787324535455` or region other than `eu-west-1`.
 3. Verifies that the shared bearer parameter exists as a SecureString.
-4. Grants only `ssm:GetParameter` for that parameter to the live execution role.
-5. Uploads the same ZIP to `label-printer-cloud-customer-pairing-claim` and
+4. Creates or verifies separate `pairing-codes` and `pairing-claim` execution
+   roles; it never modifies `lambda_dynamo_2`.
+5. Rejects a dedicated role if another Lambda consumes it or it has an
+   unexpected managed or inline policy.
+6. Switches each function independently and runs non-writing SSM/DynamoDB
+   canaries; any failure restores both previous roles and environments.
+7. Uploads the same ZIP to `label-printer-cloud-customer-pairing-claim` and
    `label-printer-cloud-customer-pairing-codes`.
-6. Enforces `nodejs24.x`, `arm64`, and each exact Node handler.
-7. Removes `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN` and sets only the SSM parameter name.
-8. Reads back both configurations and requires an identical `CodeSha256`.
+8. Enforces `nodejs24.x`, `arm64`, and each exact Node handler.
+9. Removes `DM_LABEL_PRINTER_CLOUD_BEARER_TOKEN`; only the codes handler keeps
+   the SSM parameter name because the claim handler does not read that secret.
+10. Reads back both configurations and requires an identical `CodeSha256`.
 
 The handlers use these entries:
 
