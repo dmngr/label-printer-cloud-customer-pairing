@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateOwnLogGroup",
+      "Effect": "Allow",
+      "Action": "logs:CreateLogGroup",
+      "Resource": "arn:aws:logs:eu-west-1:787324535455:*"
+    },
+    {
+      "Sid": "WriteOwnLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:eu-west-1:787324535455:log-group:/aws/lambda/label-printer-cloud-customer-pairing-claim:*"
+    },
+    {
+      "Sid": "ConsumePairingCodes",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DeleteItem",
+        "dynamodb:GetItem"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-west-1:787324535455:table/DMLabelPrinterCloudPairingCodes"
+    },
+    {
+      "Sid": "CreateOrExtendCustomerTokens",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-west-1:787324535455:table/DMLabelPrinterCloudCustomerTokens"
+    }
+  ]
+}

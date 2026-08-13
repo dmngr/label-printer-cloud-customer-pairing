@@ -1,6 +1,6 @@
 {
   "name": "label-printer-cloud-customer-pairing",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Customer pairing Lambda for the DM Label Printer customer-facing web app at app.label.ninja - exposes /api/v1/pairing/codes (device-side) and /api/v1/pairing/claim (web-side) over Function URLs.",
   "main": "dist/handlers/pairing-codes.js",
   "engines": {
