@@ -39,9 +39,10 @@ function configuration(target) {
     },
     Timeout: 30,
     MemorySize: 128,
+    RuntimeVersionConfig: { RuntimeVersionArn: "arn:aws:lambda:eu-west-1::runtime:" + "a".repeat(64) },
   };
 }
-function fixture(t, { beforeEdit = (_config, _target) => {}, afterEdit = (_config, _target) => {}, failUpload = false } = {}) {
+function fixture(t, { beforeEdit = (_config, _target) => {}, afterEdit = (_config, _target) => {}, failUpload = false, runtimeMode = "Auto" } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "pairing-code-only-test-"));
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
   const zipPath = path.join(folder, "package.zip");
@@ -55,6 +56,7 @@ function fixture(t, { beforeEdit = (_config, _target) => {}, afterEdit = (_confi
     assert.equal(args[0], "lambda");
     const target = targets.find(value => value.name === args[args.indexOf("--function-name") + 1]);
     assert.ok(target);
+    if (args[1] === "get-runtime-management-config") return { FunctionArn: configuration(target).FunctionArn, UpdateRuntimeOn: runtimeMode };
     if (args[1] === "get-function-configuration") {
       const config = configuration(target);
       if (!updated.has(target.name)) beforeEdit?.(config, target);
@@ -115,6 +117,36 @@ test("a concurrent revision failure stops without retry or configuration rollbac
   assert.throws(f.run, /revision conflict/);
   assert.equal(f.calls.filter(args => args[1] === "update-function-code").length, 1);
   assert.equal(f.updated.size, 0);
+});
+
+test("AWS-managed runtime patches preserve Auto and FunctionUpdate policy", t => {
+  for (const runtimeMode of ["Auto", "FunctionUpdate"]) {
+    const f = fixture(t, {
+      runtimeMode,
+      afterEdit: config => {
+        config.RuntimeVersionConfig.RuntimeVersionArn = "arn:aws:lambda:eu-west-1::runtime:" + "b".repeat(64);
+      },
+    });
+    const result = f.run();
+    assert.equal(result.deployed.length, 2);
+    assert.ok(result.deployed.every(target => target.managedPatch && target.runtimeBefore !== target.runtimeAfter));
+  }
+});
+
+test("manual runtime pins and invalid runtime responses cannot drift", t => {
+  for (const [runtimeMode, runtime] of [
+    ["Manual", "arn:aws:lambda:eu-west-1::runtime:" + "b".repeat(64)],
+    ["Auto", "invalid-runtime"],
+  ]) {
+    const f = fixture(t, {
+      runtimeMode,
+      afterEdit: config => {
+        config.RuntimeVersionConfig.RuntimeVersionArn = runtime;
+      },
+    });
+    assert.throws(f.run, /read-back failed/);
+    assert.equal(f.updated.size, 1);
+  }
 });
 
 test("profile credentials resolve once and every mutation rechecks the frozen identity", () => {

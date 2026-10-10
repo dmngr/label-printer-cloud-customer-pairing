@@ -88,6 +88,7 @@ function configuration(config) {
     "LastUpdateStatus",
     "LastUpdateStatusReason",
     "LastUpdateStatusReasonCode",
+    "RuntimeVersionConfig",
   ]);
   return Object.fromEntries(Object.entries(config).filter(([key]) => !changing.has(key)));
 }
@@ -96,6 +97,7 @@ export function deployCodeOnly({ aws, targets, zipPath }) {
   const expectedHash = createHash("sha256").update(fs.readFileSync(zipPath)).digest("base64");
   const snapshots = targets.map(target => {
     const before = aws(["lambda", "get-function-configuration", "--function-name", target.name]);
+    const runtimeManagement = aws(["lambda", "get-runtime-management-config", "--function-name", target.name]);
     const variables = before.Environment?.Variables ?? {};
     if (
       before.FunctionArn !== `arn:aws:lambda:${REGION}:${ACCOUNT}:function:${target.name}` ||
@@ -107,14 +109,16 @@ export function deployCodeOnly({ aws, targets, zipPath }) {
       before.Handler !== target.handler ||
       before.Role !== `arn:aws:iam::${ACCOUNT}:role/${target.roleName}` ||
       !before.RevisionId ||
+      runtimeManagement.FunctionArn !== before.FunctionArn ||
+      !["Auto", "FunctionUpdate", "Manual"].includes(runtimeManagement.UpdateRuntimeOn) ||
       Object.hasOwn(variables, STATIC_KEY) ||
       (target.canary === "codes" ? variables[PARAMETER_KEY] !== PARAMETER : Object.hasOwn(variables, PARAMETER_KEY))
     )
       throw new Error(`Code-only preflight failed for ${target.name}`);
-    return { target, before };
+    return { target, before, runtimeManagement };
   });
   const deployed = [];
-  for (const { target, before } of snapshots) {
+  for (const { target, before, runtimeManagement } of snapshots) {
     aws([
       "lambda",
       "update-function-code",
@@ -127,13 +131,32 @@ export function deployCodeOnly({ aws, targets, zipPath }) {
     ]);
     aws(["lambda", "wait", "function-updated", "--function-name", target.name], { json: false });
     const after = aws(["lambda", "get-function-configuration", "--function-name", target.name]);
+    const managementAfter = aws(["lambda", "get-runtime-management-config", "--function-name", target.name]);
+    // Lambda's existing Auto/FunctionUpdate policy can apply a managed patch on
+    // UpdateFunctionCode. It is distinct from changing the Node major/runtime,
+    // architecture, environment or policy. Preserve manual pins and reject all
+    // other drift; record the precise managed runtime before and after.
+    const managedPatch = !isDeepStrictEqual(before.RuntimeVersionConfig, after.RuntimeVersionConfig);
+    const validRuntime = value =>
+      value && Object.keys(value).length === 1 && /^arn:aws:lambda:eu-west-1::runtime:[a-f0-9]{64}$/.test(value.RuntimeVersionArn);
     if (
       after.CodeSha256 !== expectedHash ||
       after.LastUpdateStatus !== "Successful" ||
+      !isDeepStrictEqual(managementAfter, runtimeManagement) ||
+      (managedPatch &&
+        (runtimeManagement.UpdateRuntimeOn === "Manual" ||
+          !validRuntime(before.RuntimeVersionConfig) ||
+          !validRuntime(after.RuntimeVersionConfig))) ||
       !isDeepStrictEqual(configuration(after), configuration(before))
     )
       throw new Error(`Code-only read-back failed for ${target.name}`);
-    deployed.push({ name: target.name, codeSha256: after.CodeSha256 });
+    deployed.push({
+      name: target.name,
+      codeSha256: after.CodeSha256,
+      managedPatch,
+      runtimeBefore: before.RuntimeVersionConfig?.RuntimeVersionArn,
+      runtimeAfter: after.RuntimeVersionConfig?.RuntimeVersionArn,
+    });
   }
   aws.verifyIdentity();
   return { deployed, account: ACCOUNT, region: REGION, configurationPreserved: true };
