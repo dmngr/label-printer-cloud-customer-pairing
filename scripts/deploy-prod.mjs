@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createFrozenLambdaAws, deployCodeOnly } from "./code-only-deploy.mjs";
 
 const EXPECTED_ACCOUNT = "787324535455";
 const EXPECTED_REGION = "eu-west-1";
@@ -37,13 +38,13 @@ const trustPolicyPath = path.join(repoRoot, "infra", "lambda-assume-role-policy.
 const profile = process.env.AWS_PROFILE?.trim() || "dm";
 const region = process.env.AWS_REGION?.trim() || process.env.AWS_DEFAULT_REGION?.trim() || EXPECTED_REGION;
 const checkOnly = process.argv.includes("--check");
+const codeOnly = process.argv.includes("--code-only");
 
 function aws(args, { json = true } = {}) {
-  const output = execFileSync(
-    "aws",
-    [...args, "--profile", profile, "--region", region, "--no-cli-pager", ...(json ? ["--output", "json"] : [])],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  ).trim();
+  const output = execFileSync("aws", [...args, "--profile", profile, "--region", region, "--no-cli-pager", ...(json ? ["--output", "json"] : [])], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
   return json && output ? JSON.parse(output) : output;
 }
 
@@ -64,10 +65,10 @@ function assertPolicyIsScoped(targetPath) {
   for (const statement of policy.Statement ?? []) {
     const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
     const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
-    if (actions.some((action) => typeof action !== "string" || action.includes("*"))) {
+    if (actions.some(action => typeof action !== "string" || action.includes("*"))) {
       throw new Error(`Wildcard or invalid action in ${targetPath}`);
     }
-    if (resources.some((resource) => resource === "*" || typeof resource !== "string")) {
+    if (resources.some(resource => resource === "*" || typeof resource !== "string")) {
       throw new Error(`Unscoped resource in ${targetPath}`);
     }
   }
@@ -95,18 +96,17 @@ function getRole(roleName) {
 }
 
 function assertExclusiveAndUnmanaged(target, role) {
-  const consumers =
-    aws(["lambda", "list-functions", "--query", `Functions[?Role=='${role.Arn}'].FunctionName`]) ?? [];
-  const unexpectedConsumers = consumers.filter((name) => name !== target.name);
+  const consumers = aws(["lambda", "list-functions", "--query", `Functions[?Role=='${role.Arn}'].FunctionName`]) ?? [];
+  const unexpectedConsumers = consumers.filter(name => name !== target.name);
   if (unexpectedConsumers.length > 0) {
     throw new Error(`Refusing to modify role used by other Lambdas: ${unexpectedConsumers.join(", ")}`);
   }
   const attached = aws(["iam", "list-attached-role-policies", "--role-name", target.roleName]).AttachedPolicies ?? [];
   if (attached.length > 0) {
-    throw new Error(`Unexpected managed policies on ${target.roleName}: ${attached.map((policy) => policy.PolicyName).join(", ")}`);
+    throw new Error(`Unexpected managed policies on ${target.roleName}: ${attached.map(policy => policy.PolicyName).join(", ")}`);
   }
   const inline = aws(["iam", "list-role-policies", "--role-name", target.roleName]).PolicyNames ?? [];
-  const unexpectedInline = inline.filter((name) => name !== target.policyName);
+  const unexpectedInline = inline.filter(name => name !== target.policyName);
   if (unexpectedInline.length > 0) {
     throw new Error(`Unexpected inline policies on ${target.roleName}: ${unexpectedInline.join(", ")}`);
   }
@@ -234,6 +234,10 @@ if (checkOnly) {
 if (region !== EXPECTED_REGION) {
   throw new Error(`Refusing deployment to ${region}; expected ${EXPECTED_REGION}`);
 }
+if (codeOnly) {
+  console.log(JSON.stringify(deployCodeOnly({ aws: createFrozenLambdaAws(), targets: FUNCTIONS, zipPath })));
+  process.exit(0);
+}
 const identity = aws(["sts", "get-caller-identity"]);
 if (identity.Account !== EXPECTED_ACCOUNT) {
   throw new Error(`Refusing deployment to AWS account ${identity.Account}; expected ${EXPECTED_ACCOUNT}`);
@@ -247,7 +251,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "customer-pairing-deploy-"
 const backups = [];
 
 try {
-  const roleArns = new Map(FUNCTIONS.map((target) => [target.name, ensureRole(target)]));
+  const roleArns = new Map(FUNCTIONS.map(target => [target.name, ensureRole(target)]));
 
   for (const target of FUNCTIONS) {
     const before = aws(["lambda", "get-function-configuration", "--function-name", target.name]);
@@ -315,11 +319,7 @@ try {
   console.log(JSON.stringify({ deployed, account: identity.Account, region }));
 } catch (error) {
   for (const { target, before } of backups.reverse()) {
-    const rollbackEnvironmentPath = writeEnvironment(
-      tempDir,
-      `${target.name}-rollback-environment.json`,
-      before.Environment?.Variables ?? {},
-    );
+    const rollbackEnvironmentPath = writeEnvironment(tempDir, `${target.name}-rollback-environment.json`, before.Environment?.Variables ?? {});
     const current = aws(["lambda", "get-function-configuration", "--function-name", target.name]);
     updateConfiguration(target, [
       "--revision-id",
