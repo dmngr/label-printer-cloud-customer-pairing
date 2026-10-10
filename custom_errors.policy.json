@@ -4,6 +4,7 @@
     "emit_requestid_success": false
   },
   "errors": {
+    "customer_pairing_device_scope_violation": { "emit_requestid_success": false },
     "customer_pairing_code_expired": {
       "emit_requestid_success": false,
       "notes": "Pairing code TTL has elapsed; client must request a fresh code (HTTP 410)."

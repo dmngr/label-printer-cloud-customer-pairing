@@ -25,20 +25,9 @@ if (typeof BigInt === "function" && !BigInt.prototype.toJSON) {
 import type { APIGatewayProxyHandlerV2, LambdaFunctionURLEvent } from "aws-lambda";
 
 import { loadOptions } from "../config";
-import { authorize } from "../lib/bearer-authorizer";
-import {
-  jsonResponse,
-  noContentResponse,
-  textResponse,
-  validationProblemResponse,
-  type LambdaResponse
-} from "../lib/http-results";
-import {
-  CustomError,
-  logHandledErrorAction,
-  redactDeep,
-  shouldSuppress
-} from "../lib/handled-errors";
+import { authorizeSharedBearer } from "../lib/shared-bearer-authorizer";
+import { jsonResponse, noContentResponse, textResponse, validationProblemResponse, type LambdaResponse } from "../lib/http-results";
+import { CustomError, logHandledErrorAction, redactDeep, shouldSuppress } from "../lib/handled-errors";
 import { buildInvocationContextAction } from "../lib/invocation-context-action";
 import { generatePairingCode } from "../lib/pairing-code-generator";
 import { DynamoCustomerPairingStore } from "../storage/dynamo-store";
@@ -89,25 +78,32 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       return noContentResponse();
     }
 
-    let authFailure;
+    let auth;
     try {
-      authFailure = await authorize(fnEvent, options.bearerTokenSsmParameterName);
+      auth = await authorizeSharedBearer(fnEvent, options.bearerTokenSsmParameterName, true);
     } catch (error) {
       console.log(
         JSON.stringify({
           log_type: "authorization_configuration_error",
           awsRequestId,
-          message: error instanceof Error ? error.message : String(error)
-        })
+          message: error instanceof Error ? error.message : String(error),
+        }),
       );
       const code = "customer_pairing_authorization_configuration_error";
       logHandledErrorAction(code, shouldSuppress(code));
       return textResponse(500, "Authorization configuration error");
     }
-    if (authFailure !== null) {
+    if (auth.kind !== "ok") {
       const code = "customer_pairing_unauthorized";
       logHandledErrorAction(code, shouldSuppress(code));
-      return authFailure.failure;
+      return textResponse(
+        401,
+        auth.kind === "missing"
+          ? "Missing Authorization header"
+          : auth.kind === "invalid_header"
+            ? "Invalid Authorization header"
+            : "Invalid bearer token",
+      );
     }
 
     if (getMethod(fnEvent).toUpperCase() !== "POST") {
@@ -128,18 +124,23 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       return textResponse(400, "Invalid JSON body");
     }
 
-    const deviceCode = (payload?.deviceCode ?? "").toString().trim();
+    const deviceCode = (payload?.deviceCode ?? auth.device?.deviceCode ?? "").toString().trim();
+    if (auth.device && deviceCode !== auth.device.deviceCode) {
+      const code = "customer_pairing_device_scope_violation";
+      logHandledErrorAction(code, shouldSuppress(code));
+      return textResponse(403, "Device scope mismatch");
+    }
     if (deviceCode.length === 0) {
       const code = "customer_pairing_invalid_params";
       logHandledErrorAction(code, shouldSuppress(code));
       return validationProblemResponse({
-        deviceCode: ["deviceCode is required."]
+        deviceCode: ["deviceCode is required."],
       });
     }
 
     const store = new DynamoCustomerPairingStore(options);
-    const group = await store.getDeviceGroup(deviceCode);
-    if (group === null) {
+    const group = await store.getDeviceGroup(deviceCode, auth.device);
+    if (group === null || (auth.device && group !== auth.device.group)) {
       const code = "customer_pairing_device_not_found";
       logHandledErrorAction(code, shouldSuppress(code));
       return textResponse(404, "Device not found");
@@ -175,12 +176,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       code,
       deviceCode,
       storeId: group,
-      expiresAtUtc: expiresEpoch
+      expiresAtUtc: expiresEpoch,
     });
 
     const response: CreatePairingCodeResponse = {
       code,
-      expiresAtUtc: epochToIso(expiresEpoch)
+      expiresAtUtc: epochToIso(expiresEpoch),
     };
 
     console.log("RequestId SUCCESS");
@@ -196,7 +197,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
     console.log("unhandled_error", {
       awsRequestId,
       message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     });
     console.log("RequestId FAILED");
 

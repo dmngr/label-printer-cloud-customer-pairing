@@ -1,6 +1,6 @@
 {
   "name": "label-printer-cloud-customer-pairing",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Customer pairing Lambda for the DM Label Printer customer-facing web app at app.label.ninja - exposes /api/v1/pairing/codes (device-side) and /api/v1/pairing/claim (web-side) over Function URLs.",
   "main": "dist/handlers/pairing-codes.js",
   "engines": {
@@ -12,15 +12,15 @@
     "format:check": "type_check_lambdas_v3 format:check",
     "format:fix": "type_check_lambdas_v3 format:fix",
     "typecheck": "type_check_lambdas_v3 typecheck",
-    "test": "npm run build && node --test dist/test/smoke.test.js",
-    "deploy:prod": "npm run package:prod && node scripts/deploy-prod.mjs",
-    "deploy:prod:check": "npm run package:prod && node scripts/deploy-prod.mjs --check",
+    "test": "node scripts/verify-device-credential-contract.mjs && npm run build && node --test dist/test/*.test.js && node --test scripts/test/*.test.mjs",
+    "deploy:prod": "npm run deploy:prod:check && node scripts/deploy-prod.mjs --code-only",
+    "deploy:prod:check": "node scripts/verify-device-credential-contract.mjs && npm run package:prod && node scripts/deploy-prod.mjs --code-only --check",
     "deploy:prod:upgrade": "npm run deploy:prod",
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "rebuild": "npm run clean && npm run build",
     "prepackage": "npm run rebuild",
-    "package:prod": "npm run rebuild && lambda-upload deploy-prod dm --package-only --skip-bump --force --assume-runtime nodejs24.x"
+    "package:prod": "npm run rebuild && lambda-upload --package-only --skip-bump --no-fix --assume-runtime nodejs24.x"
   },
   "repository": {
     "type": "git",
@@ -40,13 +40,7 @@
   },
   "homepage": "https://github.com/dmngr/label-printer-cloud-customer-pairing#readme",
   "no_api": true,
-  "files": [
-    "dist",
-    "custom_errors.policy.json",
-    "package.json",
-    "package-lock.json",
-    "README.md"
-  ],
+  "files": [],
   "lambda_role": "",
   "api": {
     "apiId": null,
@@ -62,7 +56,7 @@
     "@types/node": "^22.7.4",
     "rimraf": "^6.0.1",
     "typescript": "^5.6.2",
-    "@deliverymanager/type_check_lambdas_v3": "^1.0.11"
+    "@deliverymanager/type_check_lambdas_v3": "1.0.17"
   },
   "lambda_ai": {
     "last_runs": {

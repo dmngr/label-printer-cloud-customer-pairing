@@ -15,6 +15,7 @@
 
 import type { CustomerPairingOptions } from "../config";
 import type { CustomerTokenRecord, PairingCodeRecord } from "../types";
+import type { DeviceIdentity } from "../lib/device-credential";
 
 // AWS SDK v3 is runtime-included on Node 18+ Lambda runtimes (Phase 4 hygiene:
 // nothing pinned in `package.json`). We require it at runtime and declare just
@@ -27,6 +28,7 @@ interface AttributeValue {
 }
 
 interface GetItemInput {
+  ConsistentRead?: boolean;
   TableName: string;
   Key: Record<string, AttributeValue>;
   ProjectionExpression?: string;
@@ -109,7 +111,7 @@ function readString(item: Record<string, AttributeValue> | undefined, key: strin
 export class DynamoCustomerPairingStore {
   constructor(private readonly options: CustomerPairingOptions) {}
 
-  async getDeviceGroup(deviceCode: string): Promise<string | null> {
+  async getDeviceGroup(deviceCode: string, scope?: DeviceIdentity): Promise<string | null> {
     const response = await dynamoClient.send(
       new GetItemCommand({
         TableName: this.options.devicesTableName,
@@ -121,13 +123,22 @@ export class DynamoCustomerPairingStore {
         // Group yet. Including the key gives us a non-empty Item for existing
         // devices regardless of Group, so we can correctly map missing-Group
         // to the 409 "no store assignment" path.
-        ProjectionExpression: "DeviceCode, #g",
-        ExpressionAttributeNames: { "#g": "Group" }
-      })
+        ProjectionExpression: scope ? "DeviceCode, #g, StoreCode, InstallationId" : "DeviceCode, #g",
+        ...(scope ? { ConsistentRead: true } : {}),
+        ExpressionAttributeNames: { "#g": "Group" },
+      }),
     );
 
     const item = response.Item;
     if (!item || Object.keys(item).length === 0) return null;
+    if (
+      scope &&
+      (readString(item, "DeviceCode") !== scope.deviceCode ||
+        readString(item, "Group") !== scope.group ||
+        readString(item, "StoreCode") !== scope.storeCode ||
+        readString(item, "InstallationId") !== scope.installationId)
+    )
+      return null;
 
     const groupAttr = item["Group"];
     const groupValue = groupAttr && typeof groupAttr.S === "string" ? groupAttr.S : "";
@@ -146,9 +157,9 @@ export class DynamoCustomerPairingStore {
           Code: s(record.code),
           DeviceCode: s(record.deviceCode),
           StoreId: s(record.storeId),
-          ExpiresAtUtc: n(record.expiresAtUtc)
-        }
-      })
+          ExpiresAtUtc: n(record.expiresAtUtc),
+        },
+      }),
     );
   }
 
@@ -156,8 +167,8 @@ export class DynamoCustomerPairingStore {
     const response = await dynamoClient.send(
       new GetItemCommand({
         TableName: this.options.pairingCodesTableName,
-        Key: { Code: s(code) }
-      })
+        Key: { Code: s(code) },
+      }),
     );
 
     const item = response.Item;
@@ -174,7 +185,7 @@ export class DynamoCustomerPairingStore {
       code: readString(item, "Code"),
       deviceCode: readString(item, "DeviceCode"),
       storeId: readString(item, "StoreId"),
-      expiresAtUtc
+      expiresAtUtc,
     };
   }
 
@@ -182,8 +193,8 @@ export class DynamoCustomerPairingStore {
     await dynamoClient.send(
       new DeleteItemCommand({
         TableName: this.options.pairingCodesTableName,
-        Key: { Code: s(code) }
-      })
+        Key: { Code: s(code) },
+      }),
     );
   }
 
@@ -191,22 +202,21 @@ export class DynamoCustomerPairingStore {
     const response = await dynamoClient.send(
       new GetItemCommand({
         TableName: this.options.customerTokensTableName,
-        Key: { TokenHash: s(tokenHash) }
-      })
+        Key: { TokenHash: s(tokenHash) },
+      }),
     );
 
     const item = response.Item;
     if (!item || Object.keys(item).length === 0) return null;
 
     const storeIdsAttr = item["StoreIds"];
-    const storeIds =
-      storeIdsAttr && Array.isArray(storeIdsAttr.SS) ? [...storeIdsAttr.SS] : [];
+    const storeIds = storeIdsAttr && Array.isArray(storeIdsAttr.SS) ? [...storeIdsAttr.SS] : [];
 
     return {
       tokenHash: readString(item, "TokenHash"),
       storeIds,
       createdAtUtc: readString(item, "CreatedAtUtc"),
-      lastUsedAtUtc: readString(item, "LastUsedAtUtc")
+      lastUsedAtUtc: readString(item, "LastUsedAtUtc"),
     };
   }
 
@@ -214,7 +224,7 @@ export class DynamoCustomerPairingStore {
     const item: Record<string, AttributeValue> = {
       TokenHash: s(record.tokenHash),
       CreatedAtUtc: s(record.createdAtUtc),
-      LastUsedAtUtc: s(record.lastUsedAtUtc)
+      LastUsedAtUtc: s(record.lastUsedAtUtc),
     };
 
     if (record.storeIds.length > 0) {
@@ -224,16 +234,12 @@ export class DynamoCustomerPairingStore {
     await dynamoClient.send(
       new PutItemCommand({
         TableName: this.options.customerTokensTableName,
-        Item: item
-      })
+        Item: item,
+      }),
     );
   }
 
-  async appendStoreToCustomerToken(
-    tokenHash: string,
-    storeId: string,
-    nowIso: string
-  ): Promise<string[]> {
+  async appendStoreToCustomerToken(tokenHash: string, storeId: string, nowIso: string): Promise<string[]> {
     // ADD on a String Set deduplicates members automatically; SET LastUsedAtUtc
     // updates the activity timestamp in the same call. Mirrors the C# version.
     const response = await dynamoClient.send(
@@ -243,10 +249,10 @@ export class DynamoCustomerPairingStore {
         UpdateExpression: "ADD StoreIds :storeId SET LastUsedAtUtc = :now",
         ExpressionAttributeValues: {
           ":storeId": { SS: [storeId] },
-          ":now": s(nowIso)
+          ":now": s(nowIso),
         },
-        ReturnValues: "ALL_NEW"
-      })
+        ReturnValues: "ALL_NEW",
+      }),
     );
 
     const attrs = response.Attributes;
