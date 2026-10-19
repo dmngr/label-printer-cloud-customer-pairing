@@ -1,9 +1,11 @@
-/** Device credential v1. Canonical source: catalog-sync; consumers COPY this
+/** Device credentials v1/v2. Canonical source: catalog-sync; consumers COPY this
  * file and its parity gate. The SSM privileged bearer stays server-side and is
  * domain-separated before signing. Existing privileged callers keep their
  * contract; new installation credentials carry immutable tenant/device scope.
  * These are persistent installation credentials, not expiring browser sessions.
- * Enrollment transport has its own short expiry and one-use challenge.
+ * Enrollment transport has its own short expiry and one-use challenge. V1 keeps
+ * its exact wire format. V2 is issued only by administrator migration after an
+ * existing cloud device's ownership is verified; it preserves its device code.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
@@ -14,11 +16,13 @@ export interface DeviceIdentity {
   deviceCode: string;
 }
 export interface DeviceCredential extends DeviceIdentity {
-  version: 1;
+  version: 1 | 2;
   credentialId: string;
 }
 export const DEVICE_CREDENTIAL_PREFIX = "ln-device-v1.";
 const DOMAIN = "label-ninja/device-credential-signing/v1";
+const MIGRATION_PREFIX = "ln-device-v2.";
+const MIGRATION_DOMAIN = "label-ninja/device-credential-signing/v2";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 const KEYS = ["credentialId", "deviceCode", "group", "installationId", "storeCode", "version"];
@@ -45,7 +49,7 @@ export function validDeviceCredential(value: unknown): value is DeviceCredential
   const row = value as Record<string, unknown>;
   return (
     Object.keys(row).sort().join(",") === KEYS.join(",") &&
-    row.version === 1 &&
+    (row.version === 1 || row.version === 2) &&
     typeof row.group === "string" &&
     ID.test(row.group) &&
     typeof row.storeCode === "string" &&
@@ -54,34 +58,37 @@ export function validDeviceCredential(value: unknown): value is DeviceCredential
     UUID.test(row.installationId) &&
     typeof row.credentialId === "string" &&
     UUID.test(row.credentialId) &&
-    row.deviceCode === "installation-" + row.installationId
+    (row.version === 1 ? row.deviceCode === "installation-" + row.installationId : typeof row.deviceCode === "string" && ID.test(row.deviceCode))
   );
 }
 
-function signature(message: string, privilegedBearer: string): Buffer {
-  const key = createHmac("sha256", privilegedBearer).update(DOMAIN).digest();
+function signature(message: string, privilegedBearer: string, version: 1 | 2): Buffer {
+  const key = createHmac("sha256", privilegedBearer)
+    .update(version === 1 ? DOMAIN : MIGRATION_DOMAIN)
+    .digest();
   return createHmac("sha256", key).update(message).digest();
 }
 
 /** Used only by an authorized issuer. Never return the signing key or log token. */
 export function issueDeviceCredential(value: DeviceCredential, privilegedBearer: string): string {
   if (!validDeviceCredential(value) || privilegedBearer.length < 32) throw new Error("Invalid credential issuance input");
-  const message = DEVICE_CREDENTIAL_PREFIX + Buffer.from(JSON.stringify(value)).toString("base64url");
-  return message + "." + signature(message, privilegedBearer).toString("base64url");
+  const message = (value.version === 1 ? DEVICE_CREDENTIAL_PREFIX : MIGRATION_PREFIX) + Buffer.from(JSON.stringify(value)).toString("base64url");
+  return message + "." + signature(message, privilegedBearer, value.version).toString("base64url");
 }
 
 export function verifyDeviceCredential(token: string, privilegedBearer: string): DeviceCredential | undefined {
-  if (token.length > 2048 || privilegedBearer.length < 32 || !token.startsWith(DEVICE_CREDENTIAL_PREFIX)) return undefined;
+  const version = token.startsWith(DEVICE_CREDENTIAL_PREFIX) ? 1 : token.startsWith(MIGRATION_PREFIX) ? 2 : undefined;
+  if (token.length > 2048 || privilegedBearer.length < 32 || version === undefined) return undefined;
   const parts = token.split(".");
   if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1]) || !/^[A-Za-z0-9_-]{43}$/.test(parts[2])) return undefined;
   const actual = Buffer.from(parts[2], "base64url");
-  const expected = signature(parts[0] + "." + parts[1], privilegedBearer);
+  const expected = signature(parts[0] + "." + parts[1], privilegedBearer, version);
   if (actual.length !== expected.length || actual.toString("base64url") !== parts[2] || !timingSafeEqual(actual, expected)) return undefined;
   try {
     const bytes = Buffer.from(parts[1], "base64url");
     if (bytes.toString("base64url") !== parts[1]) return undefined;
     const value: unknown = JSON.parse(bytes.toString("utf8"));
-    return validDeviceCredential(value) ? value : undefined;
+    return validDeviceCredential(value) && value.version === version ? value : undefined;
   } catch {
     return undefined;
   }
