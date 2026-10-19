@@ -1,16 +1,18 @@
-// Device credential wire-v1 parity. Canonical writer: catalog-sync. Copy the
+// Device credential wire-v1/v2 parity. Canonical writer: catalog-sync. Copy the
 // files and this gate after review; do not reimplement them in each Lambda.
 // Support's issuer is intentionally JavaScript and shares the public vector.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-const SELF_PIN = "e1c8bb3bf6b648ca5842496dd6db6d456638f8b4d307a5760b07e700de13d615";
+const SELF_PIN = "a826c5b0756f91334f9476f725844fc019a32c94fbc8e7574fe991dfe2cfd337";
 const PINS = {
-  "src/lib/device-credential.ts": "7ba08866f13e61d6c9cacfe1e09961f2a4ea65ddaeaa981696d9c4aae2a07d16",
+  "src/lib/device-credential.ts": "3730c9a7b3e7951127f8833a08a1cf775b2d9a35bb9bf6c6f4a61ae801526c2f",
   "src/lib/shared-bearer-authorizer.ts": "de98ae68b1c80a8fc056329bf611c60ed4cd7521ffb4866477b1605b7578158e",
   "src/test/device-credential.test.ts": "42ecb7c532440778b17f5002951b79ed372bf0c8343d487eec69830721c1e748",
   "contracts/device-credential-v1.fixture.json": "4ab73b4bcbef3adc220ea22c112fe51833d32fe2244897c6de0fbbc1799a9e35",
+  "src/test/device-credential-migration.test.ts": "3f06e6a50d6986a03c3e9867c861df1ffc729956b9f93b65f98bac88cb26a181",
+  "contracts/device-credential-v2.fixture.json": "cd8baa764690f97d2313489a800e71a668d2c4b1bbb3b47f0405efba459310ad"
 };
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const consumerName = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name;
@@ -36,4 +38,4 @@ for (const [relative, pin] of Object.entries(PINS)) {
   if (consumerName === "dmsupport-api-plugin" && relative.startsWith("src/")) continue;
   check(relative, sha(normalized(path.join(root, relative))), pin);
 }
-console.log("Device credential v1 contract verified for " + consumerName);
+console.log("Device credential v1/v2 contract verified for " + consumerName);
